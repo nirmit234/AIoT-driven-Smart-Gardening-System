@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+{% block content %}
+<div class="page-hdr">
+  <div>
+    <h1 class="page-title">Live Dashboard</h1>
+    <p class="page-sub">Raw Arduino readings · 1-second refresh · Random Forest ML assessment</p>
+  </div>
+  <div class="hdr-meta">
+    <div class="meta-chip" id="port-chip">Port: --</div>
+    <div class="meta-chip" id="time-chip">--:--:--</div>
+  </div>
+</div>
+
+<!-- 3 SENSOR CARDS -->
+<div class="sensor-row">
+  <div class="sensor-card" id="card-moisture">
+    <div class="sc-top"><div class="sc-label">Soil Moisture</div><div class="sc-tag">ADC raw</div></div>
+    <div class="sc-value"><span id="v-moisture">--</span><small>/ 1023</small></div>
+    <div class="sc-bar-wrap">
+      <div class="sc-bar-track"><div class="sc-bar-fill" id="f-moisture"></div></div>
+      <div class="sc-bar-ends"><span>0 <span class="faint">(wet)</span></span><span class="faint">(dry)</span> 1023</div>
+    </div>
+    <div class="sc-status" id="st-moisture">Waiting for Arduino…</div>
+  </div>
+  <div class="sensor-card" id="card-temp">
+    <div class="sc-top"><div class="sc-label">Temperature</div><div class="sc-tag">DHT sensor</div></div>
+    <div class="sc-value"><span id="v-temp">--</span><small>°C</small></div>
+    <div class="sc-bar-wrap">
+      <div class="sc-bar-track"><div class="sc-bar-fill" id="f-temp" style="--fc:#E8A928"></div></div>
+      <div class="sc-bar-ends"><span>0°C</span><span>50°C</span></div>
+    </div>
+    <div class="sc-status" id="st-temp">Waiting for Arduino…</div>
+  </div>
+  <div class="sensor-card" id="card-humidity">
+    <div class="sc-top"><div class="sc-label">Humidity</div><div class="sc-tag">DHT sensor</div></div>
+    <div class="sc-value"><span id="v-humidity">--</span><small>%</small></div>
+    <div class="sc-bar-wrap">
+      <div class="sc-bar-track"><div class="sc-bar-fill" id="f-humidity" style="--fc:#5DB8E8"></div></div>
+      <div class="sc-bar-ends"><span>0%</span><span>100%</span></div>
+    </div>
+    <div class="sc-status" id="st-humidity">Waiting for Arduino…</div>
+  </div>
+</div>
+
+<!-- MAIN GRID -->
+<div class="dash-grid">
+
+  <!-- Trend chart -->
+  <div class="card span2">
+    <div class="card-hdr">
+      <span class="card-title">Sensor Trend — <span id="dp-count">0</span> readings</span>
+      <div class="chart-legend">
+        <span class="leg" style="--lc:#3DBA82">Moisture ADC</span>
+        <span class="leg" style="--lc:#E8A928">Temp °C</span>
+        <span class="leg" style="--lc:#5DB8E8">Humidity %</span>
+      </div>
+    </div>
+    <div class="chart-box"><canvas id="trendChart"></canvas></div>
+  </div>
+
+  <!-- Pump relay control -->
+  <div class="card">
+    <div class="card-hdr"><span class="card-title">Relay Pump Control</span></div>
+    <div class="pump-wrap">
+      <div class="pump-ring" id="pump-ring">
+        <div class="pump-lbl" id="pump-lbl">OFF</div>
+        <div class="pump-sub">Relay · Arduino Pin 7</div>
+      </div>
+    </div>
+    <div class="pump-btns">
+      <button class="btn btn-on"  onclick="cmdPump(true)">▶ Activate Relay</button>
+      <button class="btn btn-off" onclick="cmdPump(false)">■ Stop Relay</button>
+    </div>
+    <label class="auto-row">
+      <input type="checkbox" id="auto-cb" checked/>
+      <span class="auto-track"></span>
+      <span>Auto (ADC &gt; 600 → relay ON)</span>
+    </label>
+    <div class="relay-log" id="relay-log"></div>
+  </div>
+
+  <!-- ML Assessment -->
+  <div class="card span2">
+    <div class="card-hdr">
+      <span class="card-title">Random Forest ML — Plant Health Assessment</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <select id="plant-sel" class="plant-sel"></select>
+        <button class="btn btn-assess" id="btn-assess" onclick="doAssess()">▶ Analyse</button>
+      </div>
+    </div>
+
+    <!-- Score display (hidden until first assessment) -->
+    <div id="ai-score-row" style="display:none;margin-bottom:1rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:14px">
+          <span id="ai-grade" style="font-size:2.4rem;font-weight:700;font-family:var(--serif)">--</span>
+          <div>
+            <div id="ai-status" style="font-size:14px;font-weight:500"></div>
+            <div id="ai-score-lbl" style="font-size:11px;color:var(--text3)"></div>
+            <div id="ai-conf" style="font-size:11px;color:var(--text3)"></div>
+          </div>
+        </div>
+        <div id="ai-issues-wrap" style="font-size:11px;color:var(--red);text-align:right;max-width:50%;line-height:1.6"></div>
+      </div>
+      <div style="height:10px;background:var(--border);border-radius:5px;overflow:hidden">
+        <div id="ai-score-bar" style="height:100%;border-radius:5px;width:0%;transition:width 0.8s ease"></div>
+      </div>
+    </div>
+
+    <div class="ai-box" id="ai-box">Select a plant from the database and click Analyse. The Random Forest model reads your live Arduino sensor values and predicts plant health with 95%+ accuracy.</div>
+    <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <span class="ai-note">⬡ Random Forest · 20,000 training samples · local inference · no internet</span>
+      <span id="ai-time" style="font-size:10px;color:var(--text3)"></span>
+    </div>
+  </div>
+
+  <!-- Alerts -->
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title">System Alerts</span>
+      <span class="alert-badge" id="alert-badge">0</span>
+    </div>
+    <div class="alerts-list" id="alerts-list">
+      <div class="alert-empty">Waiting for Arduino connection…</div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

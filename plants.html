@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Plants{% endblock %}
+{% block content %}
+<div class="page-hdr">
+  <div><h1 class="page-title">Plant Profiles</h1>
+  <p class="page-sub">SQLite database · add, edit, delete · ML uses these ideal ranges for assessment</p></div>
+  <button class="btn btn-primary" onclick="openAddModal()">+ Add Plant</button>
+</div>
+
+<div class="plants-layout">
+  <!-- Plant list -->
+  <div>
+    <div class="plant-list" id="plant-list">
+      <div class="alert-empty">Loading plants from database…</div>
+    </div>
+  </div>
+
+  <!-- Detail / live reading panel -->
+  <div class="plant-panel">
+    <div id="panel-empty" style="text-align:center;padding:3rem 1rem;color:var(--text3)">
+      <div style="font-size:3rem;margin-bottom:1rem">🌱</div>
+      <p>Select a plant to view details and live readings</p>
+    </div>
+    <div id="panel-body" style="display:none">
+      <div class="panel-top">
+        <div class="pan-name" id="pan-name">--</div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="btn" style="font-size:11px;padding:4px 10px" onclick="editSelected()">Edit</button>
+          <button class="btn" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:var(--red)" onclick="deleteSelected()">Delete</button>
+        </div>
+      </div>
+
+      <div class="panel-metrics">
+        <div class="pm"><div class="pm-label">Ideal Moisture (ADC)</div><div class="pm-val" id="pan-m-range">--</div></div>
+        <div class="pm"><div class="pm-label">Ideal Temp (°C)</div><div class="pm-val" id="pan-t-range">--</div></div>
+        <div class="pm"><div class="pm-label">Ideal Humidity (%)</div><div class="pm-val" id="pan-h-range">--</div></div>
+        <div class="pm accent"><div class="pm-label">Live Moisture (ADC)</div><div class="pm-val" id="pan-live-m">--</div></div>
+        <div class="pm accent"><div class="pm-label">Live Temp (°C)</div><div class="pm-val" id="pan-live-t">--</div></div>
+        <div class="pm accent"><div class="pm-label">Live Humidity (%)</div><div class="pm-val" id="pan-live-h">--</div></div>
+      </div>
+
+      <div class="panel-sec-label">Care Notes</div>
+      <div class="care-notes" id="pan-notes">--</div>
+
+      <div class="panel-sec-label" style="margin-top:1rem">ML Assessment</div>
+      <div class="ai-box" id="pan-ai">Click Analyse to get a health report for this plant using current live sensor data.</div>
+      <button class="btn btn-assess" style="margin-top:8px" onclick="assessPanel()">▶ Analyse with ML</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Modal -->
+<div id="plant-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999;align-items:center;justify-content:center">
+  <div class="modal-box">
+    <div class="modal-title" id="modal-title">Add Plant Profile</div>
+    <input  type="hidden" id="modal-id"/>
+    <div class="form-row">
+      <label>Plant Name</label>
+      <input type="text" id="f-name" placeholder="e.g. Tomatoes" class="form-inp"/>
+    </div>
+    <div class="form-grid">
+      <div class="form-row"><label>Moisture Low (ADC)</label><input type="number" id="f-mlo" value="250" class="form-inp"/></div>
+      <div class="form-row"><label>Moisture High (ADC)</label><input type="number" id="f-mhi" value="500" class="form-inp"/></div>
+      <div class="form-row"><label>Temp Low (°C)</label><input type="number" step="0.1" id="f-tlo" value="18" class="form-inp"/></div>
+      <div class="form-row"><label>Temp High (°C)</label><input type="number" step="0.1" id="f-thi" value="30" class="form-inp"/></div>
+      <div class="form-row"><label>Humidity Low (%)</label><input type="number" step="0.1" id="f-hlo" value="45" class="form-inp"/></div>
+      <div class="form-row"><label>Humidity High (%)</label><input type="number" step="0.1" id="f-hhi" value="75" class="form-inp"/></div>
+    </div>
+    <div class="form-row">
+      <label>Care Notes</label>
+      <textarea id="f-notes" rows="3" class="form-inp" placeholder="Watering tips, light requirements, etc."></textarea>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:1rem">
+      <button class="btn btn-primary" onclick="submitPlant()">Save</button>
+      <button class="btn btn-ghost"  onclick="closeModal()">Cancel</button>
+    </div>
+    <div id="modal-msg" style="font-size:12px;margin-top:8px;color:var(--accent)"></div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+let plants    = [];
+let selected  = null;
+let liveData  = { moisture:0, temp:0, humidity:0 };
+
+window.onSensorUpdate = function(d) {
+  liveData = d.sensors;
+  if(selected) {
+    setEl("pan-live-m", d.sensors.moisture);
+    setEl("pan-live-t", d.sensors.temp.toFixed(2));
+    setEl("pan-live-h", d.sensors.humidity.toFixed(2));
+  }
+};
+
+function setEl(id, v) { const e=document.getElementById(id); if(e) e.textContent=v; }
+
+// ── Load plants from DB ───────────────────────────────
+async function loadPlants() {
+  const r = await fetch("/api/plants");
+  plants = await r.json();
+  const list = document.getElementById("plant-list");
+  if(!plants.length) { list.innerHTML='<div class="alert-empty">No plants in database.</div>'; return; }
+  list.innerHTML = plants.map(p => `
+    <div class="plant-row ${selected&&selected.id===p.id?'active':''}" onclick="selectPlant(${p.id})">
+      <div class="plant-row-name">${p.name}</div>
+      <div class="plant-row-range">ADC ${p.moisture_low}–${p.moisture_high} · ${p.temp_low}–${p.temp_high}°C · ${p.humidity_low}–${p.humidity_high}%</div>
+    </div>
+  `).join("");
+}
+
+function selectPlant(id) {
+  selected = plants.find(p => p.id === id);
+  if(!selected) return;
+  loadPlants(); // refresh highlight
+  document.getElementById("panel-empty").style.display = "none";
+  document.getElementById("panel-body").style.display  = "block";
+  setEl("pan-name",    selected.name);
+  setEl("pan-m-range", `${selected.moisture_low} – ${selected.moisture_high}`);
+  setEl("pan-t-range", `${selected.temp_low} – ${selected.temp_high}`);
+  setEl("pan-h-range", `${selected.humidity_low} – ${selected.humidity_high}`);
+  setEl("pan-notes",   selected.care_notes || "No notes.");
+  setEl("pan-live-m",  liveData.moisture);
+  setEl("pan-live-t",  liveData.temp.toFixed(2));
+  setEl("pan-live-h",  liveData.humidity.toFixed(2));
+  setEl("pan-ai",      "Click Analyse to get a health report.");
+}
+
+// ── ML assess selected plant ──────────────────────────
+async function assessPanel() {
+  if(!selected) return;
+  const box = document.getElementById("pan-ai");
+  box.textContent = "Running ML assessment…";
+  const r = await fetch("/api/assess", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({plant: selected.name})
+  });
+  const d = await r.json();
+  box.textContent = d.report || d.error || "No result.";
+}
+
+// ── Add / Edit modal ──────────────────────────────────
+function openAddModal() {
+  document.getElementById("modal-title").textContent = "Add Plant Profile";
+  document.getElementById("modal-id").value = "";
+  ["f-name","f-notes"].forEach(id => document.getElementById(id).value = "");
+  [["f-mlo",250],["f-mhi",500],["f-tlo",18],["f-thi",30],["f-hlo",45],["f-hhi",75]]
+    .forEach(([id,v]) => document.getElementById(id).value = v);
+  document.getElementById("modal-msg").textContent = "";
+  document.getElementById("plant-modal").style.display = "flex";
+}
+
+function editSelected() {
+  if(!selected) return;
+  document.getElementById("modal-title").textContent = "Edit Plant Profile";
+  document.getElementById("modal-id").value  = selected.id;
+  document.getElementById("f-name").value    = selected.name;
+  document.getElementById("f-mlo").value     = selected.moisture_low;
+  document.getElementById("f-mhi").value     = selected.moisture_high;
+  document.getElementById("f-tlo").value     = selected.temp_low;
+  document.getElementById("f-thi").value     = selected.temp_high;
+  document.getElementById("f-hlo").value     = selected.humidity_low;
+  document.getElementById("f-hhi").value     = selected.humidity_high;
+  document.getElementById("f-notes").value   = selected.care_notes || "";
+  document.getElementById("modal-msg").textContent = "";
+  document.getElementById("plant-modal").style.display = "flex";
+}
+
+async function submitPlant() {
+  const id   = document.getElementById("modal-id").value;
+  const body = {
+    name:          document.getElementById("f-name").value.trim(),
+    moisture_low:  +document.getElementById("f-mlo").value,
+    moisture_high: +document.getElementById("f-mhi").value,
+    temp_low:      +document.getElementById("f-tlo").value,
+    temp_high:     +document.getElementById("f-thi").value,
+    humidity_low:  +document.getElementById("f-hlo").value,
+    humidity_high: +document.getElementById("f-hhi").value,
+    care_notes:    document.getElementById("f-notes").value.trim(),
+  };
+  if(!body.name) { document.getElementById("modal-msg").textContent="Name required."; return; }
+  const url    = id ? `/api/plants/${id}` : "/api/plants";
+  const method = id ? "PUT" : "POST";
+  const r = await fetch(url, {method, headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  const d = await r.json();
+  document.getElementById("modal-msg").textContent = d.msg || "";
+  if(d.ok !== false) { await loadPlants(); setTimeout(closeModal, 800); }
+}
+
+async function deleteSelected() {
+  if(!selected) return;
+  if(!confirm(`Delete "${selected.name}"?`)) return;
+  await fetch(`/api/plants/${selected.id}`, {method:"DELETE"});
+  selected = null;
+  document.getElementById("panel-empty").style.display = "block";
+  document.getElementById("panel-body").style.display  = "none";
+  await loadPlants();
+}
+
+function closeModal() { document.getElementById("plant-modal").style.display = "none"; }
+
+loadPlants();
+</script>
+{% endblock %}

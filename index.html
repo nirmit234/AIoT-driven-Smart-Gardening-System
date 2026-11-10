@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="hero-dots"></div>
+  <div class="hero-inner">
+    <span class="hero-badge">AIoT · Arduino · Random Forest ML · SQLite</span>
+    <h1 class="hero-title">Grow Smarter.<br><em>Not Harder.</em></h1>
+    <p class="hero-desc">
+      Real-time Arduino sensor data feeds a local Random Forest ML model
+      that predicts plant health, detects anomalies, and controls irrigation —
+      entirely on your machine. No cloud, no API key.
+    </p>
+    <div class="hero-cta">
+      <a href="/dashboard" class="btn btn-primary">Live Dashboard →</a>
+      <a href="/plants"    class="btn btn-ghost">Manage Plants</a>
+    </div>
+    <div class="hero-strip">
+      <div class="strip-item">
+        <span class="strip-val" id="h-moisture">--</span>
+        <span class="strip-lbl">Soil Moisture</span>
+        <span class="strip-unit">raw ADC (0–1023)</span>
+      </div>
+      <div class="strip-item">
+        <span class="strip-val" id="h-temp">--</span>
+        <span class="strip-lbl">Temperature</span>
+        <span class="strip-unit">°C</span>
+      </div>
+      <div class="strip-item">
+        <span class="strip-val" id="h-humidity">--</span>
+        <span class="strip-lbl">Humidity</span>
+        <span class="strip-unit">%</span>
+      </div>
+      <div class="strip-item">
+        <span class="strip-val" id="h-pump" style="font-size:1.3rem">--</span>
+        <span class="strip-lbl">Relay Pump</span>
+        <span class="strip-unit">status</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="features-section">
+  <h2 class="section-title">System Architecture</h2>
+  <div class="features-grid">
+    <div class="feat-card">
+      <span class="feat-icon">◈</span>
+      <h3>Arduino Sensors</h3>
+      <p>DHT11/22 reads temperature and humidity. Capacitive soil sensor returns raw ADC. Data sent over Serial at 9600 baud every 2 seconds.</p>
+    </div>
+    <div class="feat-card">
+      <span class="feat-icon">◎</span>
+      <h3>Relay Pump Control</h3>
+      <p>Python sends PUMP_ON / PUMP_OFF over the same serial connection. Arduino controls the relay pin directly. Auto-triggers on moisture thresholds.</p>
+    </div>
+    <div class="feat-card">
+      <span class="feat-icon">⬡</span>
+      <h3>Random Forest ML</h3>
+      <p>Trained on 20,000 samples across 15 plant profiles. 95%+ accuracy. Predicts health score (0-100), grade (A-F), and identifies root causes.</p>
+    </div>
+    <div class="feat-card">
+      <span class="feat-icon">◐</span>
+      <h3>SQLite Database</h3>
+      <p>All readings persisted. Plant profiles stored and editable. Full assessment history. No external database needed.</p>
+    </div>
+    <div class="feat-card">
+      <span class="feat-icon">⊕</span>
+      <h3>Trend Detection</h3>
+      <p>ML model uses rolling sensor history to detect drying trends, temperature spikes, and humidity drops before they become critical.</p>
+    </div>
+    <div class="feat-card">
+      <span class="feat-icon">◉</span>
+      <h3>Real-time Polling</h3>
+      <p>Browser polls /data every second. DOM updates live — no page reload. Charts refresh automatically with each new Arduino reading.</p>
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+window.onSensorUpdate = function(d) {
+  const s = d.sensors;
+  const set = (id, v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+  set("h-moisture", s.moisture);
+  set("h-temp",     s.temp.toFixed(2));
+  set("h-humidity", s.humidity.toFixed(2));
+  const pump = document.getElementById("h-pump");
+  if(pump) { pump.textContent = s.pump ? "ON" : "OFF"; pump.style.color = s.pump ? "var(--accent)" : "var(--text3)"; }
+};
+</script>
+{% endblock %}
